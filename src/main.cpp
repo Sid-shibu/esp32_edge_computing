@@ -20,7 +20,7 @@
 #define NUM_SENSORS 3    // Number of MPU6050 sensors connected via multiplexer
 
 // Define servo pins for each sensor (adjust these GPIOs based on your wiring)
-const uint8_t SERVO_PINS[NUM_SENSORS] = {25, 26, 27}; 
+const uint8_t SERVO_PIN = 25; // Use a single pin if only one servo is used
 
 // --- TREMOR DETECTION PARAMETERS ---
 #define SAMPLES 256
@@ -744,8 +744,8 @@ void setup() {
       Serial.printf("✅ MPU6050 on TCA channel %d initialized successfully.\n", i);
     }
   }
-  // Attach the single servo to the first pin (adjust as needed)
-  servo.attach(SERVO_PINS[0]);
+  // Attach the single servo to the defined pin
+  servo.attach(SERVO_PIN);
   servo.write(90); // Center position for servo
   
   // Start WiFi connection
