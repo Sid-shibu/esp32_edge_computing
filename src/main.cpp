@@ -67,8 +67,8 @@ QWIICMUX tca; // No argument for constructor
 // --- MPU6050 Sensor OBJECT (only one instance needed with multiplexer) ---
 Adafruit_MPU6050 mpu; 
 
-// --- SERVO OBJECTS (one per sensor) ---
-Servo servos[NUM_SENSORS];
+// --- SERVO OBJECT (single servo for all strings) ---
+Servo servo;
 
 // === STRUCTURES FOR TREMOR ANALYSIS ===
 struct TremorData {
@@ -389,7 +389,7 @@ TremorData detectTremor(uint8_t sensorIndex) {
 void controlTremorFeedback(uint8_t sensorIndex, TremorData tremor) {
   // Only activate compensation if tremor is detected with high confidence
   if (!tremor.isTremor || tremor.confidence < 0.5) {
-    servos[sensorIndex].write(90); // Neutral position
+    servo.write(90); // Neutral position
     return;
   }
   
@@ -410,7 +410,37 @@ void controlTremorFeedback(uint8_t sensorIndex, TremorData tremor) {
   int angle = baseAngle + amplitude * sin(phase + PI); 
   
   angle = constrain(angle, 45, 135); // Ensure angle stays within safe limits for typical servos
-  servos[sensorIndex].write(angle);
+  servo.write(angle);
+}
+
+// === SERVO CONTROL WITH TREMOR COMPENSATION (SINGLE SERVO) ===
+void controlTensionServo() {
+  // Find the maximum tremor RMS value and confidence among all sensors
+  double maxRMS = 0;
+  double maxConfidence = 0;
+  double maxFrequency = 0;
+  bool tremorDetected = false;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    if (tremorResults[i].isTremor && tremorResults[i].confidence > maxConfidence) {
+      maxConfidence = tremorResults[i].confidence;
+      maxRMS = tremorResults[i].rmsValue;
+      maxFrequency = tremorResults[i].frequency;
+      tremorDetected = true;
+    }
+  }
+  if (!tremorDetected || maxConfidence < 0.5) {
+    servo.write(90); // Neutral position
+    return;
+  }
+  // Map tremor RMS to intensity (0-100)
+  double intensity = map(maxRMS, 0, TREMOR_MAGNITUDE_THRESHOLD * 2, 0, 100);
+  intensity = constrain(intensity, 0, 100);
+  int baseAngle = 90;
+  int amplitude = map(intensity, 0, 100, 0, 45); // Max 45 degrees swing
+  double phase = (millis() / 1000.0) * maxFrequency * 2 * PI;
+  int angle = baseAngle + amplitude * sin(phase + PI);
+  angle = constrain(angle, 45, 135);
+  servo.write(angle);
 }
 
 // === CALIBRATION PROCEDURE ===
@@ -713,9 +743,10 @@ void setup() {
     } else {
       Serial.printf("✅ MPU6050 on TCA channel %d initialized successfully.\n", i);
     }
-    servos[i].attach(SERVO_PINS[i]);
-    servos[i].write(90); // Center position for servo
   }
+  // Attach the single servo to the first pin (adjust as needed)
+  servo.attach(SERVO_PINS[0]);
+  servo.write(90); // Center position for servo
   
   // Start WiFi connection
   Serial.println("Connecting to WiFi...");
@@ -762,8 +793,9 @@ void loop() {
   // Perform tremor detection on all sensors
   for (int i = 0; i < NUM_SENSORS; i++) {
     tremorResults[i] = detectTremor(i); // Pass channel index
-    controlTremorFeedback(i, tremorResults[i]);
   }
+  // Control the single servo based on combined tremor
+  controlTensionServo();
   // Send data output to serial and web server
   sendTremorDataJSON();
   // Handle web server requests
