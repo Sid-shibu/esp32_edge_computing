@@ -1,0 +1,15 @@
+# PlatformIO build system
+.pio/
+.pioenvs/
+.pipkg/
+
+# VS Code config (optional if sharing project settings)
+.vscode/
+!.vscode/settings.json  # keep settings if needed
+
+# Compiled binary files
+*.bin
+*.elf
+*.map
+
+# Python
