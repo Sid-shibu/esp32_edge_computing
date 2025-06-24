@@ -55,8 +55,8 @@ bool isCalibrated = false;
 bool allSensorsOk = true;
 
 // === WIFI CREDENTIALS ===
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "OPPO A17";
+const char* password = "22446666";
 
 // === WEB SERVER OBJECT ===
 WebServer server(80);
@@ -163,17 +163,18 @@ double applyMedianFilter(double value, uint8_t sensorIndex) {
 
 // === MPU6050 INITIALIZATION (using hardware I2C with TCA9548A) ===
 bool initMPU(uint8_t sensorChannel) {
-  Serial.printf("Sensor %d: Activating TCA channel %d...\n", sensorChannel + 1, sensorChannel);
-  tca.enablePort(sensorChannel); // Use correct SparkFun method
+  uint8_t muxChannel = sensorChannel + 1; // Shift to channels 1,2,3
+  Serial.printf("Sensor %d: Activating TCA channel %d...\n", sensorChannel + 1, muxChannel);
+  tca.enablePort(muxChannel); // Use correct SparkFun method
 
-  Serial.printf("Sensor %d: Attempting to initialize MPU on TCA channel %d...\n", sensorChannel + 1, sensorChannel);
+  Serial.printf("Sensor %d: Attempting to initialize MPU on TCA channel %d...\n", sensorChannel + 1, muxChannel);
   
   // The mpu.begin() function will use the currently selected TCA channel
   if (!mpu.begin(MPU_ADDR)) { // Use MPU_ADDR (0x68) or 0x69 if AD0 is high
-    Serial.printf("Sensor %d: Failed to find MPU6050 chip on channel %d. Check wiring and address.\n", sensorChannel + 1, sensorChannel);
+    Serial.printf("Sensor %d: Failed to find MPU6050 chip on channel %d. Check wiring and address.\n", sensorChannel + 1, muxChannel);
     return false;
   }
-  Serial.printf("Sensor %d: MPU6050 Found on channel %d!\n", sensorChannel + 1, sensorChannel);
+  Serial.printf("Sensor %d: MPU6050 Found on channel %d!\n", sensorChannel + 1, muxChannel);
 
   // Set MPU6050 ranges and filters
   // These settings are applied to the MPU currently active on the TCA channel
@@ -209,15 +210,16 @@ bool initMPU(uint8_t sensorChannel) {
   }
 
   delay(100); // Give sensor time to settle after configuration
-  Serial.printf("✅ Sensor %d initialized successfully on TCA channel %d.\n", sensorChannel + 1, sensorChannel);
+  Serial.printf("✅ Sensor %d initialized successfully on TCA channel %d.\n", sensorChannel + 1, muxChannel);
   return true;
 }
 
 // === READ SENSOR DATA (using hardware I2C with TCA9548A) ===
 SensorReading readSensorData(uint8_t sensorChannel) {
+  uint8_t muxChannel = sensorChannel + 1; // Shift to channels 1,2,3
   SensorReading reading;
   reading.timestamp = micros();
-  tca.enablePort(sensorChannel); // Use correct SparkFun method
+  tca.enablePort(muxChannel); // Use correct SparkFun method
   
   sensors_event_t a, g, temp;
   // Get new sensor events from the MPU currently active on the TCA channel

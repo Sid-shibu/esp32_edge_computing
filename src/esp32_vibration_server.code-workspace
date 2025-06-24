@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../esp32_vibration_server"
+		},
+		{
+			"name": "esp32_edge_computing",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
