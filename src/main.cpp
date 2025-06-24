@@ -20,7 +20,7 @@
 #define NUM_SENSORS 3    // Number of MPU6050 sensors connected via multiplexer
 
 // Define servo pins for each sensor (adjust these GPIOs based on your wiring)
-const uint8_t SERVO_PIN = 25; // Use a single pin if only one servo is used
+const uint8_t SERVO_PIN = 26; // Use a single pin if only one servo is used
 
 // --- TREMOR DETECTION PARAMETERS ---
 #define SAMPLES 256
@@ -55,8 +55,8 @@ bool isCalibrated = false;
 bool allSensorsOk = true;
 
 // === WIFI CREDENTIALS ===
-const char* ssid = "OPPO A17";
-const char* password = "22446666";
+const char* ssid = "Sky Net";
+const char* password = "nizam@kollam";
 
 // === WEB SERVER OBJECT ===
 WebServer server(80);
@@ -387,11 +387,31 @@ TremorData detectTremor(uint8_t sensorIndex) {
   return result;
 }
 
+// --- SERVO DEBUG FUNCTION ---
+#define SERVO_DEBUG
+int lastServoAngle = 90; // Store last angle
+unsigned long lastServoUpdate = 0; // For non-blocking update
+const unsigned long SERVO_UPDATE_INTERVAL = 20; // ms
+void debugServoWrite(int angle) {
+#ifdef SERVO_DEBUG
+  Serial.printf("[SERVO] Writing angle: %d\n", angle);
+#endif
+  lastServoAngle = angle;
+}
+
+void updateServoIfNeeded() {
+  unsigned long now = millis();
+  if (now - lastServoUpdate >= SERVO_UPDATE_INTERVAL) {
+    servo.write(lastServoAngle);
+    lastServoUpdate = now;
+  }
+}
+
 // === SERVO CONTROL WITH TREMOR COMPENSATION ===
 void controlTremorFeedback(uint8_t sensorIndex, TremorData tremor) {
   // Only activate compensation if tremor is detected with high confidence
   if (!tremor.isTremor || tremor.confidence < 0.5) {
-    servo.write(90); // Neutral position
+    debugServoWrite(90); // Neutral position
     return;
   }
   
@@ -412,7 +432,7 @@ void controlTremorFeedback(uint8_t sensorIndex, TremorData tremor) {
   int angle = baseAngle + amplitude * sin(phase + PI); 
   
   angle = constrain(angle, 45, 135); // Ensure angle stays within safe limits for typical servos
-  servo.write(angle);
+  debugServoWrite(angle);
 }
 
 // === SERVO CONTROL WITH TREMOR COMPENSATION (SINGLE SERVO) ===
@@ -431,7 +451,7 @@ void controlTensionServo() {
     }
   }
   if (!tremorDetected || maxConfidence < 0.5) {
-    servo.write(90); // Neutral position
+    debugServoWrite(90); // Neutral position
     return;
   }
   // Map tremor RMS to intensity (0-100)
@@ -442,7 +462,7 @@ void controlTensionServo() {
   double phase = (millis() / 1000.0) * maxFrequency * 2 * PI;
   int angle = baseAngle + amplitude * sin(phase + PI);
   angle = constrain(angle, 45, 135);
-  servo.write(angle);
+  debugServoWrite(angle);
 }
 
 // === CALIBRATION PROCEDURE ===
@@ -691,10 +711,43 @@ void handleData() {
   server.send(200, "application/json", output);
 }
 
-// === MAIN SETUP ===
 void setup() {
   Serial.begin(115200);
   Serial.println("🚀 Starting ESP32 Tremor Detection System");
+
+  // === (Optional) QUICK SERVO TEST ===
+  // Uncomment the following block if you want to test the servo at startup
+  /*
+  Serial.println("[SERVO TEST] Attaching servo to pin 26 and sweeping 0-180...");
+  servo.attach(SERVO_PIN);
+  for (int angle = 0; angle <= 180; angle += 30) {
+    Serial.printf("[SERVO TEST] Writing angle: %d\n", angle);
+    servo.write(angle);
+    delay(500);
+  }
+  for (int angle = 180; angle >= 0; angle -= 30) {
+    Serial.printf("[SERVO TEST] Writing angle: %d\n", angle);
+    servo.write(angle);
+    delay(500);
+  }
+  Serial.println("[SERVO TEST] Sweep complete. If servo did not move, check wiring and power.");
+  delay(1000);
+  */
+
+  // Attach the single servo to the defined pin (only once!)
+  servo.attach(SERVO_PIN);
+  debugServoWrite(90); // Center position for servo
+  updateServoIfNeeded();
+  delay(2);
+  debugServoWrite(0); // Move to 0 degrees
+  updateServoIfNeeded();
+  delay(2);
+  debugServoWrite(180); // Move to 180 degrees
+  updateServoIfNeeded();
+  delay(2);
+  debugServoWrite(90); // Back to center
+  updateServoIfNeeded();
+  delay(2);
   
   // Allocate memory for FFT arrays
   vReal = (double*)malloc(SAMPLES * sizeof(double));
@@ -748,7 +801,18 @@ void setup() {
   }
   // Attach the single servo to the defined pin
   servo.attach(SERVO_PIN);
-  servo.write(90); // Center position for servo
+  debugServoWrite(90); // Center position for servo
+  updateServoIfNeeded();
+  delay(500);
+  debugServoWrite(0); // Move to 0 degrees
+  updateServoIfNeeded();
+  delay(1000);
+  debugServoWrite(180); // Move to 180 degrees
+  updateServoIfNeeded();
+  delay(1000);
+  debugServoWrite(90); // Back to center
+  updateServoIfNeeded();
+  delay(1000);
   
   // Start WiFi connection
   Serial.println("Connecting to WiFi...");
@@ -773,51 +837,31 @@ void setup() {
   Serial.println("Web server started.");
   
   // Wait for calibration (or force if button not pressed)
-  Serial.println("Press the EN button to calibrate (or wait 5 seconds for auto-calibration if button not pressed)...");
-  unsigned long calibration_wait_start = millis();
-  while (digitalRead(EN_BUTTON) == HIGH && (millis() - calibration_wait_start < 5000)) {
-    delay(100);
-  }
-  calibrateBaseline();
+  Serial.println("Press the EN button to calibrate (or wait 5 seconds for auto-calibration if button not pressed)...");    
 }
 
-// === MAIN LOOP ===
 void loop() {
-  // Check for recalibration request
+  // Check if EN button is pressed for calibration
   if (digitalRead(EN_BUTTON) == LOW) {
-    delay(50); // Debounce
-    if (digitalRead(EN_BUTTON) == LOW) {
+    delay(50); // Debounce delay
+    if (digitalRead(EN_BUTTON) == LOW) { // Check again after debounce
       calibrateBaseline();
-      // Wait for button release
-      while (digitalRead(EN_BUTTON) == LOW) delay(10);
     }
   }
-  // Perform tremor detection on all sensors
+  // --- MAIN TREMOR DETECTION AND FEEDBACK LOOP ---
   for (int i = 0; i < NUM_SENSORS; i++) {
-    tremorResults[i] = detectTremor(i); // Pass channel index
+    tremorResults[i] = detectTremor(i);
+    Serial.printf("Sensor %d - Tremor: %s, Freq: %.2f Hz, RMS: %.2f, Amp: %.2f, Consistency: %.2f, Confidence: %.2f\n", 
+      i + 1, 
+      tremorResults[i].isTremor ? "Yes" : "No", 
+      tremorResults[i].frequency, 
+      tremorResults[i].rmsValue, 
+      tremorResults[i].amplitude, 
+      tremorResults[i].consistency, 
+      tremorResults[i].confidence);
   }
-  // Control the single servo based on combined tremor
   controlTensionServo();
-  // Send data output to serial and web server
+  updateServoIfNeeded(); // Non-blocking servo update
   sendTremorDataJSON();
-  // Handle web server requests
-  server.handleClient();
-  // Visual feedback (status LED)
-  bool anyTremor = false;
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    if (tremorResults[i].isTremor && tremorResults[i].confidence > 0.6) {
-      anyTremor = true;
-      break;
-    }
-  }
-  if (anyTremor) {
-    digitalWrite(STATUS_LED, (millis() / 250) % 2); // Blink LED faster for active tremor
-    if (allSensorsOk) { // Only beep if all sensors are operational
-      digitalWrite(BUZZER_PIN, HIGH); // Constant tone during tremor
-    }
-  } else {
-    digitalWrite(STATUS_LED, LOW);
-    digitalWrite(BUZZER_PIN, LOW);
-  }
-  delay(50); // Small delay to prevent overwhelming output and allow other tasks
+  delay(10); // Reduce delay for more responsive servo
 }
